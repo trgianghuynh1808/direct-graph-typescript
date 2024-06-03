@@ -4,11 +4,33 @@ type TAdjacencyOfVertex = TVertex[];
 
 type TAdjacencyList = Record<TVertex, TAdjacencyOfVertex>;
 
+type TEdge = [TVertex, TVertex]; // [from, to]
+
 class DirectGraph {
   public adjacencyList: TAdjacencyList;
 
   constructor() {
     this.adjacencyList = {};
+  }
+
+  public getEdges(): TEdge[] {
+    const edges: TEdge[] = [];
+
+    Object.keys(this.adjacencyList).forEach((fromVertex) => {
+      const adjacencyOfVertex = this.adjacencyList[fromVertex] ?? [];
+
+      edges.push(
+        ...adjacencyOfVertex.map((toVertex) => {
+          return [fromVertex, toVertex] as TEdge;
+        }),
+      );
+    });
+
+    return edges;
+  }
+
+  public getVertexs(): TVertex[] {
+    return Object.keys(this.adjacencyList);
   }
 
   public addVertex(vertex: TVertex): void {
@@ -143,3 +165,9 @@ graph.print();
 graph.removeVertex("B");
 
 graph.print();
+
+const edges = graph.getEdges();
+const vertexs = graph.getVertexs();
+
+console.log("Edges: ", edges);
+console.log("Vertexs: ", vertexs);
