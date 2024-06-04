@@ -1,10 +1,21 @@
-type TVertex = string;
+export type TVertex = string;
 
-type TAdjacencyOfVertex = TVertex[];
+export type TAdjacencyOfVertex = TVertex[];
 
-type TAdjacencyList = Record<TVertex, TAdjacencyOfVertex>;
+export type TAdjacencyList = Record<TVertex, TAdjacencyOfVertex>;
 
-type TEdge = [TVertex, TVertex]; // [from, to]
+export type TEdge = [TVertex, TVertex]; // [from, to]
+
+export type TChangedResult = {
+  removed: {
+    vertexes: TVertex[];
+    edges: TEdge[];
+  } | null;
+  created: {
+    vertexes: TVertex[];
+    edges: TEdge[];
+  } | null;
+};
 
 class DirectGraph {
   public adjacencyList: TAdjacencyList;
@@ -29,11 +40,11 @@ class DirectGraph {
     return edges;
   }
 
-  public getVertexs(): TVertex[] {
+  public getVertexes(): TVertex[] {
     return Object.keys(this.adjacencyList);
   }
 
-  public addVertex(vertex: TVertex): void {
+  public addVertex(vertex: TVertex): TChangedResult | undefined {
     const existsVertex = Boolean(this.adjacencyList[vertex]);
 
     if (existsVertex) {
@@ -41,24 +52,35 @@ class DirectGraph {
     }
 
     this.adjacencyList[vertex] = [];
+
+    return {
+      removed: null,
+      created: {
+        edges: [],
+        vertexes: [vertex],
+      },
+    };
   }
 
-  public addEdge(from: TVertex, to: TVertex): void {
+  public addEdge(from: TVertex, to: TVertex): TChangedResult | undefined {
     // *INFO: add new from vertex if this vertex not exists
+    const newVertexes = [] as TVertex[];
+
     if (!this.adjacencyList[from]) {
-      this.addVertex(from);
+      const changedResult = this.addVertex(from);
+      newVertexes.push(changedResult?.created?.vertexes[0]!);
     }
 
     // *INFO: add new to vertex if this vertex not exists
     if (!this.adjacencyList[to]) {
-      this.addVertex(to);
+      const changedResult = this.addVertex(to);
+      newVertexes.push(changedResult?.created?.vertexes[0]!);
     }
 
     // *INFO: check exists edge
     const existsEdge = Boolean(this.adjacencyList[from]?.includes(to));
 
     if (existsEdge) {
-      console.error(`Error: the edge ${from} -> ${to} was exists`);
       return;
     }
 
@@ -66,19 +88,25 @@ class DirectGraph {
 
     // *INFO: with Direct Graph don't have one more relation between two route points
     if (existsReverseEdge) {
-      console.error(`Error: the edge ${from} -> ${to} was exists reverse`);
       return;
     }
 
     this.adjacencyList[from]!.push(to);
+
+    return {
+      removed: null,
+      created: {
+        vertexes: newVertexes,
+        edges: [[from, to]],
+      },
+    };
   }
 
-  public removeEdge(from: TVertex, to: TVertex): void {
+  public removeEdge(from: TVertex, to: TVertex): TChangedResult | undefined {
     const fromAdjacency = this.adjacencyList[from];
-    const toAddjacency = this.adjacencyList[to];
+    const toAdjacency = this.adjacencyList[to];
 
-    if (!fromAdjacency || !toAddjacency) {
-      console.error("Error: don't exits from or to vertex");
+    if (!fromAdjacency || !toAdjacency) {
       return;
     }
 
@@ -87,61 +115,101 @@ class DirectGraph {
         return item !== to;
       },
     );
+
+    return {
+      created: null,
+      removed: {
+        edges: [[from, to]],
+        vertexes: [],
+      },
+    };
   }
 
-  public removeVertex(vertex: TVertex): void {
+  public removeVertex(vertex: TVertex): TChangedResult | undefined {
     const currentAdjacency = this.adjacencyList[vertex];
+    const newEdges = [] as TEdge[];
 
     if (!currentAdjacency) {
-      console.error(`Error: don't exits ${vertex} vertex`);
       return;
     }
 
-    const incomingVertexs = Object.keys(this.adjacencyList).filter((key) => {
+    const incomingVertexes = Object.keys(this.adjacencyList).filter((key) => {
       return this.adjacencyList[key]?.includes(vertex);
     });
 
     // *INFO: reconnect with incoming & outgoing vertex after removed vertex
-    for (const i of incomingVertexs) {
+    for (const i of incomingVertexes) {
       for (const j of currentAdjacency) {
-        this.addEdge(i, j);
+        const newEdgeChangedResult = this.addEdge(i, j);
+        const newEdge = newEdgeChangedResult?.created?.edges[0];
+        if (newEdge) {
+          newEdges.push(newEdge);
+        }
       }
     }
 
+    const removedEdges = (this.adjacencyList[vertex] ?? []).map((item) => {
+      return [vertex, item] as TEdge;
+    });
     // *INFO: remove vertex
     delete this.adjacencyList[vertex];
 
-    // *INFO: remove related edgeds
-    for (const i of incomingVertexs) {
+    // *INFO: remove related edges
+    for (const i of incomingVertexes) {
       this.adjacencyList[i] = (this.adjacencyList[i] ?? []).filter((item) => {
         return item !== vertex;
       });
+      removedEdges.push([i, vertex]);
     }
+
+    return {
+      created: {
+        edges: newEdges,
+        vertexes: [],
+      },
+      removed: {
+        edges: [...removedEdges],
+        vertexes: [vertex],
+      },
+    };
   }
 
   public insertBetweenVertex(
     vertex: TVertex,
     from: TVertex,
     to: TVertex,
-  ): void {
+  ): TChangedResult | undefined {
     if (this.adjacencyList[vertex]) {
-      console.error(`Error: the ${vertex} was exists`);
       return;
     }
 
     if (!this.adjacencyList[from] || !this.adjacencyList[to]) {
-      console.error(
-        `Error: the from ${from} vertex or to ${to} vertex not exists`,
-      );
       return;
     }
 
     // *INFO: remove exists edge between from and to
-    this.removeEdge(from, to);
+    const removeEdgeChangedResult = this.removeEdge(from, to);
 
     // *INFO: add edges for new vertex
-    this.addEdge(from, vertex);
-    this.addEdge(vertex, to);
+    const fromVertexChangedResult = this.addEdge(from, vertex);
+    const vertexToChangedResult = this.addEdge(vertex, to);
+
+    return {
+      removed: {
+        edges: [removeEdgeChangedResult?.removed?.edges[0]!],
+        vertexes: [],
+      },
+      created: {
+        edges: [
+          ...(fromVertexChangedResult?.created?.edges ?? []),
+          ...(vertexToChangedResult?.created?.edges ?? []),
+        ],
+        vertexes: [
+          ...(fromVertexChangedResult?.created?.vertexes ?? []),
+          ...(vertexToChangedResult?.created?.vertexes ?? []),
+        ],
+      },
+    };
   }
 
   public print(): void {
@@ -156,18 +224,11 @@ const graph = new DirectGraph();
 
 graph.addEdge("A", "B");
 graph.addEdge("B", "C");
-graph.addEdge("D", "B");
-graph.addEdge("C", "E");
-graph.insertBetweenVertex("Z", "A", "B");
 
-graph.print();
-// graph.removeEdge("A", "E");
-graph.removeVertex("B");
+const res = graph.removeVertex("B");
+
+console.log(JSON.stringify(res, null, 2));
 
 graph.print();
 
-const edges = graph.getEdges();
-const vertexs = graph.getVertexs();
-
-console.log("Edges: ", edges);
-console.log("Vertexs: ", vertexs);
+export { DirectGraph };
